@@ -23,10 +23,52 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         sceneView.showsStatistics = true
         
         // Create a new scene
-        let scene = SCNScene(named: "art.scnassets/ship.scn")!
+        let scene = SCNScene()
         
         // Set the scene to the view
         sceneView.scene = scene
+        
+        addBackboard()
+        registerGestureRecognizer()
+    }
+    
+    func registerGestureRecognizer() {
+        let swipe = UISwipeGestureRecognizer(target: self, action: #selector(handleSwipe))
+        swipe.direction = .up
+        sceneView.addGestureRecognizer(swipe)
+    }
+    
+    @objc
+    func handleSwipe(gestureRecognizer: UIGestureRecognizer) {
+        // Scene view to be accessed
+        guard let sceneView = gestureRecognizer.view as? ARSCNView else {
+            return
+        }
+        
+        // Access the point of view of the scene view
+        guard let centerPoint = sceneView.pointOfView else {
+            return
+        }
+        
+        // Transform matrix
+        // Orientation
+        // Location of the camera
+        
+        
+    }
+    
+    func addBackboard() {
+        guard let backboardScene = SCNScene(named: "art.scnassets/hoop.scn") else {
+            return
+        }
+        
+        guard let backboardNode = backboardScene.rootNode.childNode(withName: "backboard", recursively: false) else {
+            return
+        }
+        
+        backboardNode.position = SCNVector3(x: 0, y: 0.5, z: -3)
+        
+        sceneView.scene.rootNode.addChildNode(backboardNode)
     }
     
     override func viewWillAppear(_ animated: Bool) {
