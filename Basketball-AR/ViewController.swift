@@ -8,8 +8,16 @@
 import UIKit
 import SceneKit
 import ARKit
+import CoreMotion
 
 class ViewController: UIViewController, ARSCNViewDelegate {
+    
+    let motionManager: CMMotionManager = {
+       let result = CMMotionManager()
+        result.accelerometerUpdateInterval = 1/30
+        result.gyroUpdateInterval = 1/30
+        return result
+    }()
 
     @IBOutlet var sceneView: ARSCNView!
     
@@ -94,6 +102,47 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         sceneView.scene.rootNode.addChildNode(backboardNode)
         
         horizontalAction(node: backboardNode)
+        
+        motionManager.startGyroUpdates()
+        motionManager.startAccelerometerUpdates(to: .main) { data, error in
+            self.handleShake(data, error)
+        }
+    }
+    
+    var lastBall = Date()
+    
+    func handleShake(_ data: CMAccelerometerData?, _ error: Error?) {
+        guard error == nil, let acc = data?.acceleration, let gyro = motionManager.gyroData?.rotationRate else { return }
+        let acceleration = sqrt(pow(acc.x, 2) + pow(acc.y, 2) + pow(acc.z, 2))
+        if acceleration >= 2 && lastBall.advanced(by: 0.2).compare(Date()) == .orderedAscending {
+            lastBall = Date()
+            print(acceleration)
+            guard let centerPoint = sceneView.pointOfView else { return }
+            
+            let cameraTransform = centerPoint.transform
+            let cameraLocation = SCNVector3(x: cameraTransform.m41, y: cameraTransform.m42, z: cameraTransform.m43)
+            let cameraOrientation = SCNVector3(x: -cameraTransform.m31, y: -cameraTransform.m32, z: -cameraTransform.m33)
+            
+            let cameraPosition = SCNVector3Make(cameraLocation.x + cameraOrientation.x, cameraLocation.y + cameraOrientation.y, cameraLocation.z + cameraOrientation.z)
+            
+            let ball = SCNSphere(radius: 0.15)
+            let ballMaterial = SCNMaterial()
+            ballMaterial.diffuse.contents = UIImage(named: "basketballSkin.png")
+            ball.materials = [ballMaterial]
+            
+            let ballNode = SCNNode(geometry: ball)
+            ballNode.position = cameraPosition
+            
+            let physicsShape = SCNPhysicsShape(node: ballNode, options: nil)
+            let physicsBody = SCNPhysicsBody(type: .dynamic, shape: physicsShape)
+            
+            ballNode.physicsBody = physicsBody
+            
+            let forceVector: Float = 4
+            ballNode.physicsBody?.applyForce(SCNVector3(x: cameraOrientation.x * Float(acc.x) * forceVector, y: cameraOrientation.y * Float(acc.y) * forceVector, z: cameraOrientation.z * Float(acc.z) * forceVector), asImpulse: true)
+            
+            sceneView.scene.rootNode.addChildNode(ballNode)
+        }
     }
     
     func horizontalAction(node: SCNNode) {
