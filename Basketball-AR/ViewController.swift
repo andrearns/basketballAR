@@ -50,11 +50,29 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             return
         }
         
-        // Transform matrix
-        // Orientation
-        // Location of the camera
+        let cameraTransform = centerPoint.transform
+        let cameraLocation = SCNVector3(x: cameraTransform.m41, y: cameraTransform.m42, z: cameraTransform.m43)
+        let cameraOrientation = SCNVector3(x: -cameraTransform.m31, y: -cameraTransform.m32, z: -cameraTransform.m33)
         
+        let cameraPosition = SCNVector3Make(cameraLocation.x + cameraOrientation.x, cameraLocation.y + cameraOrientation.y, cameraLocation.z + cameraOrientation.z)
         
+        let ball = SCNSphere(radius: 0.15)
+        let ballMaterial = SCNMaterial()
+        ballMaterial.diffuse.contents = UIImage(named: "basketballSkin.png")
+        ball.materials = [ballMaterial]
+        
+        let ballNode = SCNNode(geometry: ball)
+        ballNode.position = cameraPosition
+        
+        let physicsShape = SCNPhysicsShape(node: ballNode, options: nil)
+        let physicsBody = SCNPhysicsBody(type: .dynamic, shape: physicsShape)
+        
+        ballNode.physicsBody = physicsBody
+        
+        let forceVector: Float = 6
+        ballNode.physicsBody?.applyForce(SCNVector3(x: cameraOrientation.x * forceVector * 2, y: cameraOrientation.y * forceVector, z: cameraOrientation.z * forceVector), asImpulse: true)
+        
+        sceneView.scene.rootNode.addChildNode(ballNode)
     }
     
     func addBackboard() {
@@ -68,7 +86,22 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         backboardNode.position = SCNVector3(x: 0, y: 0.5, z: -3)
         
+        let physicsShape = SCNPhysicsShape(node: backboardNode, options: [SCNPhysicsShape.Option.type: SCNPhysicsShape.ShapeType.concavePolyhedron])
+        let physicsBody = SCNPhysicsBody(type: .static, shape: physicsShape)
+        
+        backboardNode.physicsBody = physicsBody
+        
         sceneView.scene.rootNode.addChildNode(backboardNode)
+        
+        horizontalAction(node: backboardNode)
+    }
+    
+    func horizontalAction(node: SCNNode) {
+        let leftAction = SCNAction.move(by: SCNVector3(x: -1, y: 0, z: 0), duration: 2)
+        let rightAction = SCNAction.move(by: SCNVector3(x: 1, y: 0, z: 0), duration: 2)
+        
+        let actionSequence = SCNAction.sequence([leftAction, rightAction])
+        node.runAction(SCNAction.repeatForever(actionSequence))
     }
     
     override func viewWillAppear(_ animated: Bool) {
