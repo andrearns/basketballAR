@@ -10,12 +10,11 @@ import SceneKit
 import ARKit
 import CoreMotion
 
-class ViewController: UIViewController, ARSCNViewDelegate {
+class ViewController: UIViewController, ARSCNViewDelegate, SCNPhysicsContactDelegate {
     
     let motionManager: CMMotionManager = {
        let result = CMMotionManager()
         result.accelerometerUpdateInterval = 1/30
-        result.gyroUpdateInterval = 1/30
         return result
     }()
 
@@ -38,12 +37,27 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         addBackboard()
         registerGestureRecognizer()
+        
+        self.sceneView.scene.physicsWorld.contactDelegate = self
     }
     
     func registerGestureRecognizer() {
         let swipe = UISwipeGestureRecognizer(target: self, action: #selector(handleSwipe))
         swipe.direction = .up
         sceneView.addGestureRecognizer(swipe)
+    }
+    
+    var balls = [String]()
+    var contactedBalls = [String: Int]()
+    
+    func physicsWorld(_ world: SCNPhysicsWorld, didEnd contact: SCNPhysicsContact) {
+//        print("Contact", contact.nodeA.name ?? "A", "with", contact.nodeB.name ?? "B")
+        if let name = contact.nodeB.name {
+            contactedBalls[name] = (contactedBalls[name] ?? 0) + 1
+            if ((contactedBalls[name] ?? 0) == 8) {
+                print("PONTO")
+            }
+        }
     }
     
     @objc
@@ -88,11 +102,13 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             return
         }
         
-        guard let backboardNode = backboardScene.rootNode.childNode(withName: "backboard", recursively: false) else {
+        guard let backboardNode = backboardScene.rootNode.childNode(withName: "backboard", recursively: false), let netNode = backboardScene.rootNode.childNode(withName: "net", recursively: false), let sensorNode = backboardScene.rootNode.childNode(withName: "score", recursively: false) else {
             return
         }
         
-        backboardNode.position = SCNVector3(x: 0, y: 0.5, z: -3)
+        backboardNode.position = SCNVector3(x: 0, y: 0.75, z: -5)
+        sensorNode.position = SCNVector3(x: 0.042, y: 0.945, z: -4.385)
+        netNode.position = SCNVector3(x: -0.022, y: 0.75, z: -5.02)
         
         let physicsShape = SCNPhysicsShape(node: backboardNode, options: [SCNPhysicsShape.Option.type: SCNPhysicsShape.ShapeType.concavePolyhedron])
         let physicsBody = SCNPhysicsBody(type: .static, shape: physicsShape)
@@ -101,9 +117,14 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         sceneView.scene.rootNode.addChildNode(backboardNode)
         
-        horizontalAction(node: backboardNode)
+        sensorNode.physicsBody = SCNPhysicsBody(type: .static, shape: SCNPhysicsShape(node: sensorNode))
+        sensorNode.physicsBody?.categoryBitMask = 8
+        sensorNode.physicsBody?.collisionBitMask = 0
         
-        motionManager.startGyroUpdates()
+        sceneView.scene.rootNode.addChildNode(sensorNode)
+        sceneView.scene.rootNode.addChildNode(netNode)
+
+        
         motionManager.startAccelerometerUpdates(to: .main) { data, error in
             self.handleShake(data, error)
         }
@@ -112,11 +133,11 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     var lastBall = Date()
     
     func handleShake(_ data: CMAccelerometerData?, _ error: Error?) {
-        guard error == nil, let acc = data?.acceleration, let gyro = motionManager.gyroData?.rotationRate else { return }
-        let acceleration = sqrt(pow(acc.x, 2) + pow(acc.y, 2) + pow(acc.z, 2))
-        if acceleration >= 2 && lastBall.advanced(by: 0.2).compare(Date()) == .orderedAscending {
+        guard error == nil, let a = data?.acceleration.z else { return }
+        let acc = abs(a)
+        if acc >= 2 && lastBall.advanced(by: 0.2).compare(Date()) == .orderedAscending {
             lastBall = Date()
-            print(acceleration)
+//            print(acceleration)
             guard let centerPoint = sceneView.pointOfView else { return }
             
             let cameraTransform = centerPoint.transform
@@ -132,14 +153,36 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             
             let ballNode = SCNNode(geometry: ball)
             ballNode.position = cameraPosition
+            ballNode.name = UUID().uuidString
+            
+            balls.append(ballNode.name!)
             
             let physicsShape = SCNPhysicsShape(node: ballNode, options: nil)
             let physicsBody = SCNPhysicsBody(type: .dynamic, shape: physicsShape)
             
+//            physicsBody.categoryBitMask = 4
+//            physicsBody.collisionBitMask = 0
+            physicsBody.contactTestBitMask = 8
             ballNode.physicsBody = physicsBody
             
-            let forceVector: Float = 4
-            ballNode.physicsBody?.applyForce(SCNVector3(x: cameraOrientation.x * Float(acc.x) * forceVector, y: cameraOrientation.y * Float(acc.y) * forceVector, z: cameraOrientation.z * Float(acc.z) * forceVector), asImpulse: true)
+            
+            let forceVector: Float = 3
+            ballNode.physicsBody?.applyForce(
+                SCNVector3(
+                    x: cameraOrientation.x * forceVector,
+                    y: cameraOrientation.y * Float(abs(acc)) * forceVector,
+                    z: cameraOrientation.z * Float(abs(acc)) * forceVector
+                ),
+                asImpulse: true
+            )
+//            ballNode.physicsBody?.applyForce(
+//                SCNVector3(
+//                    x: cameraOrientation.x * Float(acc.x) * forceVector,
+//                    y: cameraOrientation.y * Float(abs(acc.y)) * forceVector,
+//                    z: cameraOrientation.z * Float(abs(acc.z)) * forceVector
+//                ),
+//                asImpulse: true
+//            )
             
             sceneView.scene.rootNode.addChildNode(ballNode)
         }
